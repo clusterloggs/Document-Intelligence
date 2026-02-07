@@ -39,50 +39,99 @@ for r in records:
     print(r["content"][:1000])
 
 
+###########
+
+# ---------------- INSTALL + IMPORTS ----------------
+%pip install azure-ai-formrecognizer --quiet
+
+import os
+from pathlib import Path
+from datetime import datetime
 import pandas as pd
 
-df = pd.DataFrame(records)
-spark_df = spark.createDataFrame(df)
+from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.core.credentials import AzureKeyCredential
 
-spark_df.write.mode("overwrite").saveAsTable("alexandria_ocr_output")
+from pyspark.sql import SparkSession
 
+spark = SparkSession.builder.getOrCreate()
 
+# ---------------- AZURE DOCUMENT INTELLIGENCE ----------------
+DOC_INTEL_ENDPOINT = "https://<your-resource-name>.cognitiveservices.azure.com/"
+DOC_INTEL_KEY = "<your-key>"
+
+client = DocumentAnalysisClient(
+    endpoint=DOC_INTEL_ENDPOINT,
+    credential=AzureKeyCredential(DOC_INTEL_KEY)
+)
+
+# ---------------- FILE LOCATION ----------------
+# IMPORTANT: this must be the LOCAL Fabric path (NOT ABFS)
+folder_path = Path("/lakehouse/default/Files/alexandria-raw-data")
 
 records = []
 
+# ---------------- OCR PROCESSING LOOP ----------------
 for file in folder_path.iterdir():
 
     if file.suffix.lower() not in [".png", ".jpg", ".jpeg", ".pdf"]:
         continue
 
-    document_id = file.stem   # GUID filename without extension
+    print(f"Processing: {file.name}")
 
-    with open(file, "rb") as f:
-        poller = client.begin_analyze_document(
-            model_id=model_id,
-            document=f
-        )
+    document_id = file.stem
 
-    result = poller.result()
+    try:
+        with open(file, "rb") as f:
+            poller = client.begin_analyze_document(
+                model_id="prebuilt-read",
+                document=f
+            )
 
-    # --- LOOP THROUGH DOCUMENTS ---
-    for document in result.documents:
+        result = poller.result()
 
-        # --- LOOP THROUGH FIELDS ---
-        for field_name, field in document.fields.items():
+        extracted_text = ""
+        total_conf = 0
+        word_count = 0
 
-            # safely get value
-            field_value = None
-            if field.value is not None:
-                field_value = str(field.value)
-            elif field.content is not None:
-                field_value = field.content
+        # Extract text + confidence
+        for page in result.pages:
+            for line in page.lines:
+                extracted_text += line.content + " "
+                for word in line.words:
+                    total_conf += word.confidence
+                    word_count += 1
 
-            records.append({
-                "document_id": document_id,
-                "field_name": field_name,
-                "field_value": field_value,
-                "field_type": str(field.value_type),
-                "confidence_score": field.confidence,
-                "extracted_at": datetime.utcnow().isoformat()
-            })
+        avg_confidence = total_conf / word_count if word_count > 0 else None
+
+        records.append({
+            "document_id": document_id,
+            "file_name": file.name,
+            "file_type": file.suffix.lower(),
+            "content": extracted_text.strip(),
+            "confidence_score": avg_confidence,
+            "page_count": len(result.pages),
+            "extracted_at": datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        print(f"Failed on {file.name}: {str(e)}")
+
+# ---------------- CREATE DATAFRAME ----------------
+df = pd.DataFrame(records)
+
+print("Rows extracted:", len(df))
+display(df.head())
+
+# ---------------- CONVERT TO SPARK ----------------
+spark_df = spark.createDataFrame(df)
+
+# ---------------- SAVE TO LAKEHOUSE DELTA TABLE ----------------
+table_name = "document_ocr"
+
+spark_df.write \
+    .format("delta") \
+    .mode("append") \
+    .saveAsTable(table_name)
+
+print(f"Saved to Lakehouse table: {table_name}")
