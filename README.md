@@ -32,7 +32,7 @@
 
 ## Project Overview
 
-This repository demonstrates **two production-ready approaches** for building document processing pipelines using **Azure AI Document Intelligence** with **Microsoft Fabric notebooks**. Both approaches follow Azure security best practices and are designed for scalable, enterprise-grade deployments.
+This repository demonstrates **two production-ready approaches** for building document processing pipelines using **Azure AI Document Intelligence** with **Microsoft Fabric notebooks**. It facilitates reading content from **images and PDF files** utilizing Azure's OCR models and storing them in **structured tables** for easy computational usage. Both approaches follow Azure security best practices and are designed for scalable, enterprise-grade deployments.
 
 ### What is Azure Document Intelligence?
 
