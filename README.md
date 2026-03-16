@@ -1150,7 +1150,7 @@ For issues or questions:
 
 **Document Intelligence Implementation Guide**
 - Built following Microsoft Azure best practices
-- Tested with Python 3.9+ and Azure SDK v1.0+
+- Tested with Python 3.10+ and Azure SDK v1.0+
 - Compatible with Microsoft Fabric notebooks (2024+)
 
 ---
