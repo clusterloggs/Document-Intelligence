@@ -1,0 +1,3 @@
+curl.exe -X POST "`azure function key url (default)`&modelId=prebuilt-document" `
+  --data-binary "@C:\Users\Downloads\ID_card.jpg" `
+  -H "Content-Type: image/jpeg"
